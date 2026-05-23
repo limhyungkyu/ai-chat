@@ -305,6 +305,13 @@ export default function Sidebar({
             <span>로그인 / 회원가입</span>
           </button>
         )}
+
+        {/* Service Version */}
+        <div className="text-center pt-2 pb-1">
+          <p className="text-[9px] font-bold tracking-widest text-on-surface/30 uppercase select-none">
+            Service Version 0.1.0
+          </p>
+        </div>
       </div>
     </nav>
   );
