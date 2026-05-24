@@ -309,7 +309,7 @@ export default function Sidebar({
         {/* Service Version */}
         <div className="text-center pt-2 pb-1">
           <p className="text-[9px] font-bold tracking-widest text-on-surface/30 uppercase select-none">
-            Service Version 0.1.1
+            Service Version 0.1.2
           </p>
         </div>
       </div>
