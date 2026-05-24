@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { LANGUAGES } from "@/lib/languages";
-import { Plus, MessageSquare, LogOut, Globe, Sparkles, ChevronRight, Settings, BookOpen } from "lucide-react";
+import { Plus, MessageSquare, LogOut, Globe, Sparkles, ChevronRight, Settings, BookOpen, Share2 } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
 import { collection, addDoc, serverTimestamp, query, where, orderBy } from "firebase/firestore";
 
@@ -34,9 +34,42 @@ export default function Sidebar({
   const [persona, setPersona] = useState("interpreter");
   const [languageLevel, setLanguageLevel] = useState("advanced");
   const [isCreatingRoom, setIsCreatingRoom] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
 
   const inputLang = LANGUAGES.find((l) => l.code === inputLangCode) || LANGUAGES[0];
   const outputLang = LANGUAGES.find((l) => l.code === outputLangCode) || LANGUAGES[1];
+
+  const handleShareApp = async () => {
+    if (typeof window === "undefined") return;
+
+    const inviteTitle = "SUEAAZ AI Chat";
+    const inviteText = "✨ 실시간 다국어 AI 대화 메이트 SUEAAZ AI에 당신을 초대합니다!\n\n💼 전문 통역사처럼, ⚡ 친근한 친구처럼, 🧭 현지 가이드처럼 대화하며 외국어를 배워보세요.\n📝 나만의 실시간 단어장과 4지선다 퀴즈 기능까지!\n\n👉 지금 시작하기:";
+    const inviteUrl = window.location.origin;
+
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: inviteTitle,
+          text: inviteText,
+          url: inviteUrl
+        });
+      } catch (err) {
+        console.log("Web Share cancelled or failed:", err);
+      }
+    } else {
+      // Clipboard copy fallback for desktop
+      const fullInviteMessage = `${inviteText} ${inviteUrl}`;
+      try {
+        await navigator.clipboard.writeText(fullInviteMessage);
+        setToastMessage("📋 초대 문구가 클립보드에 복사되었습니다! 친구에게 공유해 보세요.");
+        setShowToast(true);
+        setTimeout(() => setShowToast(false), 3000);
+      } catch (err) {
+        console.error("Failed to copy invite message:", err);
+      }
+    }
+  };
 
   const handleCreateRoom = async () => {
     if (!user) {
@@ -82,11 +115,16 @@ export default function Sidebar({
   };
 
   return (
-    <nav className={`flex flex-col text-on-surface h-full overflow-hidden ${className}`}>
-      {/* Brand Header */}
-      <div className="flex items-center space-x-3 px-2 mb-6">
-        <div className="h-10 w-10 rounded-full bg-gradient-to-tr from-primary to-primary-container flex items-center justify-center shadow-lg shadow-primary/20">
-          <Sparkles className="text-white w-5 h-5 animate-pulse" />
+    <nav className={`flex flex-col text-on-surface overflow-hidden ${className}`}>
+      {/* Brand Header - pinned at top */}
+      <div className="shrink-0 flex items-center space-x-3 px-2 mb-4">
+        <div className="relative group/logo">
+          <div className="absolute inset-0 bg-primary/25 rounded-xl blur-md group-hover/logo:blur-lg transition-all duration-300 pointer-events-none"></div>
+          <img
+            src="/logo.png"
+            alt="SUEAAZ Logo"
+            className="w-10 h-10 rounded-xl relative z-10 border border-white/20 shadow-md group-hover/logo:scale-105 transition-transform duration-300 select-none"
+          />
         </div>
         <div>
           <h1 className="text-2xl font-bold font-headline bg-gradient-to-br from-primary to-primary-container bg-clip-text text-transparent tracking-tight">
@@ -97,6 +135,9 @@ export default function Sidebar({
           </p>
         </div>
       </div>
+
+      {/* Scrollable content area - settings, buttons, rooms */}
+      <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain" style={{ WebkitOverflowScrolling: 'touch' }}>
 
       {/* Language Selection controls */}
       <div className="space-y-3 px-2 py-3 rounded-2xl glass-panel bg-white/40">
@@ -234,8 +275,17 @@ export default function Sidebar({
         </button>
       )}
 
+      {/* 친구 초대하기 버튼 */}
+      <button
+        onClick={handleShareApp}
+        className="w-full mt-2 py-3 px-4 rounded-xl bg-white/40 hover:bg-primary/10 text-on-surface hover:text-primary font-headline font-semibold flex items-center justify-center space-x-2 transition-all duration-300 border border-primary/10 cursor-pointer shadow-[0_4px_12px_rgba(0,0,0,0.02)] group"
+      >
+        <Share2 className="w-4 h-4 text-primary group-hover:scale-110 transition-transform duration-300" />
+        <span>✉️ 친구 초대하기</span>
+      </button>
+
       {/* Navigation Rooms Area */}
-      <div className="flex-1 overflow-y-auto space-y-1.5 mt-6 px-1">
+      <div className="space-y-1.5 mt-6 px-1">
         <p className="text-[10px] uppercase tracking-widest text-on-surface/40 font-bold mb-3">
           채팅방 목록
         </p>
@@ -273,8 +323,10 @@ export default function Sidebar({
         )}
       </div>
 
-      {/* Footer / Profile Section */}
-      <div className="mt-auto space-y-2 border-t border-primary/10 pt-4">
+      </div>{/* End scrollable content area */}
+
+      {/* Footer / Profile Section - pinned at bottom */}
+      <div className="shrink-0 space-y-2 border-t border-primary/10 pt-4">
         {user ? (
           <div className="flex items-center space-x-3 px-2 py-1.5">
             <div className="relative flex-shrink-0">
@@ -309,10 +361,22 @@ export default function Sidebar({
         {/* Service Version */}
         <div className="text-center pt-2 pb-1">
           <p className="text-[9px] font-bold tracking-widest text-on-surface/30 uppercase select-none">
-            Service Version 0.1.2
+            Service Version 0.1.6
           </p>
         </div>
       </div>
+
+      {/* Premium Toast Alert Overlay */}
+      {showToast && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 md:left-6 md:translate-x-0 z-[999] max-w-sm w-[calc(100%-2rem)] p-4 rounded-2xl glass-panel bg-white/70 backdrop-blur-md border border-primary/10 shadow-[0_20px_40px_rgba(0,0,0,0.08)] flex items-center space-x-3 transition-all duration-500 message-enter">
+          <div className="h-9 w-9 rounded-xl bg-primary/10 flex items-center justify-center flex-shrink-0">
+            <Share2 className="text-primary w-4.5 h-4.5" />
+          </div>
+          <p className="text-xs text-on-surface/85 font-medium leading-relaxed">
+            {toastMessage}
+          </p>
+        </div>
+      )}
     </nav>
   );
 }

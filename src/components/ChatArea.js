@@ -92,6 +92,15 @@ export default function ChatArea({
     isCompleted: false
   });
 
+  const [toggledTranslations, setToggledTranslations] = useState({});
+
+  const handleToggleTranslation = (msgId) => {
+    setToggledTranslations((prev) => ({
+      ...prev,
+      [msgId]: !prev[msgId]
+    }));
+  };
+
   const chatEndRef = useRef(null);
   const textareaRef = useRef(null);
 
@@ -1365,6 +1374,19 @@ export default function ChatArea({
                             {mainText}
                           </div>
 
+                          {/* In-place Mobile Translation View */}
+                          {toggledTranslations[msg.id] && hoverTranslation && (
+                            <div className="bg-white/60 border border-primary/10 rounded-xl p-3.5 mb-2 w-full text-left message-enter">
+                              <div className="text-[10px] uppercase font-bold tracking-wider text-primary mb-1 flex items-center gap-1.5">
+                                <Globe className="w-3.5 h-3.5 text-primary animate-pulse" />
+                                원문 번역 ({inputLangInfo.name})
+                              </div>
+                              <p className="text-xs text-on-surface/85 leading-relaxed whitespace-pre-wrap">
+                                {hoverTranslation}
+                              </p>
+                            </div>
+                          )}
+
                           {/* Grounding metadata (Google Search) */}
                           {msg.groundingMetadata && (
                             <div className="mt-2.5 pt-2.5 border-t border-primary/5">
@@ -1387,7 +1409,7 @@ export default function ChatArea({
                               {msg.groundingMetadata.groundingChunks && msg.groundingMetadata.groundingChunks.length > 0 && (
                                 <div>
                                   <div className="text-[10px] uppercase font-bold tracking-wider text-on-surface/40 mb-1.5 flex items-center gap-1">
-                                    <Globe className="w-3 h-3 text-primary/50" />
+                                    <Globe className="w-3.5 h-3.5 text-primary" />
                                     출처:
                                   </div>
                                   <div className="flex flex-wrap gap-1.5">
@@ -1415,30 +1437,45 @@ export default function ChatArea({
                             </div>
                           )}
 
-                          <div className="flex items-center space-x-3 mt-2 text-xs text-on-surface/50">
+                          <div className="flex items-center flex-nowrap space-x-3.5 mt-2 text-[11px] md:text-xs text-on-surface/50 whitespace-nowrap overflow-x-auto scrollbar-none">
                             <button
                               onClick={() => handleCopy(mainText)}
-                              className="flex items-center space-x-1.5 hover:text-primary transition-colors cursor-pointer"
+                              className="flex items-center space-x-1 hover:text-primary transition-colors cursor-pointer flex-shrink-0 py-0.5"
+                              title="복사"
                             >
-                              <Copy className="w-3.5 h-3.5" />
-                              <span>복사</span>
+                              <Copy className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span className="hidden md:inline">복사</span>
                             </button>
                             <button
                               onClick={() => handleSpeak(msg.content, outputLangInfo.code, msg.id)}
-                              className="flex items-center space-x-1.5 hover:text-primary transition-colors cursor-pointer"
+                              className="flex items-center space-x-1 hover:text-primary transition-colors cursor-pointer flex-shrink-0 py-0.5"
+                              title={speakingMessageId === msg.id ? "정지" : "읽기"}
                             >
-                              <Volume2 className="w-3.5 h-3.5" />
-                              <span>{speakingMessageId === msg.id ? "정지" : "읽기"}</span>
+                              <Volume2 className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span className="hidden md:inline">{speakingMessageId === msg.id ? "정지" : "읽기"}</span>
                             </button>
                             <button
                               onClick={() => setActiveVocabMsgId(activeVocabMsgId === msg.id ? null : msg.id)}
-                              className={`flex items-center space-x-1.5 hover:text-primary transition-colors cursor-pointer ${
+                              className={`flex items-center space-x-1 hover:text-primary transition-colors cursor-pointer flex-shrink-0 py-0.5 ${
                                 activeVocabMsgId === msg.id ? "text-primary font-bold animate-pulse" : ""
                               }`}
+                              title="단어 사전"
                             >
-                              <BookOpen className="w-3.5 h-3.5" />
-                              <span>단어 사전</span>
+                              <BookOpen className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span className="hidden md:inline">단어 사전</span>
                             </button>
+                            {hoverTranslation && (
+                              <button
+                                onClick={() => handleToggleTranslation(msg.id)}
+                                className={`flex items-center space-x-1 hover:text-primary transition-colors cursor-pointer flex-shrink-0 py-0.5 ${
+                                  toggledTranslations[msg.id] ? "text-primary font-bold" : ""
+                                }`}
+                                title={toggledTranslations[msg.id] ? "번역 숨기기" : "번역 보기"}
+                              >
+                                <Globe className="w-3.5 h-3.5 flex-shrink-0" />
+                                <span className="hidden md:inline">{toggledTranslations[msg.id] ? "번역 숨기기" : "번역 보기"}</span>
+                              </button>
+                            )}
                           </div>
 
                           {/* Vocabulary Guide Drawer Card */}

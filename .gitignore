@@ -39,3 +39,11 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# firebase
+firebase-debug.log*
+.firebase/
+
+# temp/test scripts
+src/test_search.js
+

@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { auth, db } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, getRedirectResult } from "firebase/auth";
 import { collection, query, where, orderBy, onSnapshot } from "firebase/firestore";
 import Sidebar from "@/components/Sidebar";
 import ChatArea from "@/components/ChatArea";
@@ -29,6 +29,19 @@ export default function Home() {
       }
     });
     return () => unsubscribe();
+  }, []);
+
+  // Handle mobile redirect sign-in result on mount
+  useEffect(() => {
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          console.log("Successfully logged in via redirect:", result.user);
+        }
+      })
+      .catch((err) => {
+        console.error("Redirect sign-in error:", err);
+      });
   }, []);
 
   // Monitor rooms collection in real-time
@@ -131,7 +144,7 @@ export default function Home() {
           setActiveRoomId={setActiveRoomId}
           onOpenAuth={() => setAuthModalOpen(true)}
           loadingRooms={loadingRooms}
-          className="p-4"
+          className="h-full p-4"
         />
       </div>
 
@@ -145,7 +158,7 @@ export default function Home() {
           />
 
           {/* Drawer content wrapper */}
-          <div className="relative w-72 h-full z-10 flex flex-col p-4 bg-surface border-r border-primary/10 shadow-[10px_0_40px_rgba(0,0,0,0.06)] animate-slide-right">
+          <div className="relative w-72 h-full z-10 flex flex-col p-4 bg-surface border-r border-primary/10 shadow-[10px_0_40px_rgba(0,0,0,0.06)] animate-slide-right overflow-hidden">
             <button
               onClick={() => setMobileMenuOpen(false)}
               className="absolute top-4 right-4 p-2 rounded-xl bg-white/60 hover:bg-primary/10 text-on-surface cursor-pointer"
@@ -165,7 +178,7 @@ export default function Home() {
                 setMobileMenuOpen(false);
               }}
               loadingRooms={loadingRooms}
-              className="flex-1 mt-8 w-full"
+              className="flex-1 min-h-0 mt-8 w-full"
             />
           </div>
         </div>
