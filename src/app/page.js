@@ -118,7 +118,7 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="relative flex flex-row h-screen w-screen overflow-hidden font-body text-on-surface">
+    <div className="relative flex flex-row h-full w-full overflow-hidden font-body text-on-surface">
       {/* Background canvas */}
       <canvas id="particlesCanvas" className="fixed inset-0 pointer-events-none z-0" />
 

@@ -776,9 +776,9 @@ export default function ChatArea({
     : LANGUAGES[1];
 
   return (
-    <main className="flex-1 flex flex-col h-screen ml-0 md:ml-72 relative z-10 text-on-surface overflow-hidden">
+    <main className="flex-1 flex flex-col h-full ml-0 md:ml-72 relative z-10 text-on-surface overflow-hidden">
       {/* Top Header */}
-      <header className="sticky top-0 z-50 flex justify-between items-center px-4 md:px-6 py-4 w-full backdrop-saturate-150 bg-white/60 backdrop-blur-xl border-b border-primary/10 shadow-sm">
+      <header className="shrink-0 z-50 flex justify-between items-center px-4 md:px-6 py-4 w-full backdrop-saturate-150 bg-white/90 md:bg-white/60 backdrop-blur-xl border-b border-primary/10 shadow-sm">
         <div className="flex-1 min-w-0 flex items-center space-x-2 md:space-x-3">
           {/* Mobile Menu Hamburger */}
           <button
