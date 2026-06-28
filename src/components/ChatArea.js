@@ -48,12 +48,11 @@ const LEVEL_NAMES = {
   advanced: "🔥 고급/원어민"
 };
 
-const GEMINI_AI_VOICES = [
-  { name: "ai_Aoede", label: "✨ Gemini AI: Aoede (따뜻한 여성)" },
-  { name: "ai_Kore", label: "✨ Gemini AI: Kore (차분한 여성)" },
-  { name: "ai_Puck", label: "✨ Gemini AI: Puck (경쾌한 남성)" },
-  { name: "ai_Charon", label: "✨ Gemini AI: Charon (차분한 남성)" },
-  { name: "ai_Fenrir", label: "✨ Gemini AI: Fenrir (신뢰감 있는 남성)" }
+const GCP_PREMIUM_VOICES = [
+  { name: "gcp_female_1", label: "✨ Premium AI 여성 1 (선명함)" },
+  { name: "gcp_female_2", label: "✨ Premium AI 여성 2 (내추럴)" },
+  { name: "gcp_male_1", label: "✨ Premium AI 남성 1 (선명함)" },
+  { name: "gcp_male_2", label: "✨ Premium AI 남성 2 (내추럴)" }
 ];
 
 const PERSONA_EMOJIS = {
@@ -873,8 +872,8 @@ export default function ChatArea({
                   }}
                   className="bg-transparent text-[9px] sm:text-[11px] font-medium text-on-surface/80 border-none outline-none focus:ring-0 cursor-pointer max-w-[60px] xs:max-w-[85px] sm:max-w-[120px] md:max-w-[140px] truncate"
                 >
-                  <optgroup label="Premium Gemini AI Voices" className="text-[10px] font-bold text-primary bg-surface font-sans">
-                    {GEMINI_AI_VOICES.map((v) => (
+                  <optgroup label="Premium GCP AI Voices" className="text-[10px] font-bold text-primary bg-surface font-sans">
+                    {GCP_PREMIUM_VOICES.map((v) => (
                       <option key={v.name} value={v.name} className="text-on-surface bg-surface font-sans text-xs font-normal">
                         {v.label}
                       </option>

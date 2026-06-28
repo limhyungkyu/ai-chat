@@ -1,26 +1,70 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { TextToSpeechClient } from "@google-cloud/text-to-speech";
 
-function getWavHeader(dataLength, sampleRate = 24000, numChannels = 1, bitsPerSample = 16) {
-  const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
-  const blockAlign = (numChannels * bitsPerSample) / 8;
-  const buffer = Buffer.alloc(44);
+// Define the voice mapping for high-quality Google Cloud TTS voices
+const VOICE_MAPPING = {
+  "ko-KR": {
+    "gcp_female_1": "ko-KR-Neural2-A",
+    "gcp_female_2": "ko-KR-Neural2-B",
+    "gcp_male_1": "ko-KR-Neural2-C",
+    "gcp_male_2": "ko-KR-Wavenet-D"
+  },
+  "en-US": {
+    "gcp_female_1": "en-US-Neural2-F",
+    "gcp_female_2": "en-US-Journey-F",
+    "gcp_male_1": "en-US-Neural2-D",
+    "gcp_male_2": "en-US-Journey-D"
+  },
+  "ja-JP": {
+    "gcp_female_1": "ja-JP-Neural2-B",
+    "gcp_female_2": "ja-JP-Wavenet-a",
+    "gcp_male_1": "ja-JP-Neural2-C",
+    "gcp_male_2": "ja-JP-Wavenet-D"
+  },
+  "es-ES": {
+    "gcp_female_1": "es-ES-Neural2-A",
+    "gcp_female_2": "es-ES-Neural2-F",
+    "gcp_male_1": "es-ES-Neural2-B",
+    "gcp_male_2": "es-ES-Polyglot-1"
+  },
+  "vi-VN": {
+    "gcp_female_1": "vi-VN-Neural2-A",
+    "gcp_female_2": "vi-VN-Wavenet-A",
+    "gcp_male_1": "vi-VN-Neural2-B",
+    "gcp_male_2": "vi-VN-Wavenet-D"
+  },
+  "zh-CN": {
+    "gcp_female_1": "zh-CN-Neural2-A",
+    "gcp_female_2": "zh-CN-Neural2-F",
+    "gcp_male_1": "zh-CN-Neural2-B",
+    "gcp_male_2": "zh-CN-Wavenet-B"
+  },
+  "fr-FR": {
+    "gcp_female_1": "fr-FR-Neural2-A",
+    "gcp_female_2": "fr-FR-Neural2-C",
+    "gcp_male_1": "fr-FR-Neural2-B",
+    "gcp_male_2": "fr-FR-Neural2-D"
+  },
+  "de-DE": {
+    "gcp_female_1": "de-DE-Neural2-A",
+    "gcp_female_2": "de-DE-Neural2-C",
+    "gcp_male_1": "de-DE-Neural2-B",
+    "gcp_male_2": "de-DE-Neural2-F"
+  }
+};
 
-  buffer.write("RIFF", 0);
-  buffer.writeUInt32LE(dataLength + 36, 4);
-  buffer.write("WAVE", 8);
-  buffer.write("fmt ", 12);
-  buffer.writeUInt32LE(16, 16);
-  buffer.writeUInt16LE(1, 20); // Raw PCM
-  buffer.writeUInt16LE(numChannels, 22);
-  buffer.writeUInt32LE(sampleRate, 24);
-  buffer.writeUInt32LE(byteRate, 28);
-  buffer.writeUInt16LE(blockAlign, 32);
-  buffer.writeUInt16LE(bitsPerSample, 34);
-  buffer.write("data", 36);
-  buffer.writeUInt32LE(dataLength, 40);
+const clientConfig = {
+  projectId: process.env.GCP_PROJECT_ID || "sueaaz-ai-chat",
+};
 
-  return buffer;
+// Initialize credentials from env if manual service account variables are provided
+if (process.env.GCP_CLIENT_EMAIL && process.env.GCP_PRIVATE_KEY) {
+  clientConfig.credentials = {
+    client_email: process.env.GCP_CLIENT_EMAIL,
+    private_key: process.env.GCP_PRIVATE_KEY.replace(/\\n/g, "\n"),
+  };
 }
+
+const ttsClient = new TextToSpeechClient(clientConfig);
 
 export async function POST(req) {
   try {
@@ -33,82 +77,51 @@ export async function POST(req) {
       );
     }
 
-    const apiKey = process.env.GEMINI_API_KEY;
-    if (!apiKey) {
-      return new Response(
-        JSON.stringify({ error: "Gemini API Key가 누락되었습니다. 환경설정을 확인해 주세요." }),
-        { status: 500, headers: { "Content-Type": "application/json" } }
-      );
+    const targetLang = lang || "en-US";
+    let targetVoice = voice;
+
+    // Map selected voice identifier to high-quality Neural2/Journey voices
+    if (VOICE_MAPPING[targetLang] && VOICE_MAPPING[targetLang][voice]) {
+      targetVoice = VOICE_MAPPING[targetLang][voice];
+    } else if (voice && (voice.startsWith("gcp_") || voice.startsWith("ai_"))) {
+      // Default fallback premium voice if selected identifier is generic
+      const normalizedVoice = voice.replace("ai_", "gcp_");
+      targetVoice = VOICE_MAPPING[targetLang]?.[normalizedVoice] || VOICE_MAPPING[targetLang]?.["gcp_female_1"] || `${targetLang}-Neural2-A`;
+    } else if (!voice) {
+      targetVoice = VOICE_MAPPING[targetLang]?.["gcp_female_1"] || `${targetLang}-Neural2-A`;
     }
 
-    // Initialize the Gemini API client
-    const genAI = new GoogleGenerativeAI(apiKey);
-    
-    // Choose gemini-3.1-flash-tts-preview as the dedicated text-to-speech model
-    const model = genAI.getGenerativeModel({
-      model: "gemini-3.1-flash-tts-preview"
-    });
+    console.log(`[GCP TTS] Generating audio for text: "${text.substring(0, 30)}..." using voice: ${targetVoice} (Language: ${targetLang})`);
 
-    console.log(`[TTS API] Generating audio for text: "${text.substring(0, 30)}..." using voice: ${voice || "Puck"}`);
+    const request = {
+      input: { text },
+      voice: { 
+        languageCode: targetLang, 
+        name: targetVoice 
+      },
+      audioConfig: { 
+        audioEncoding: "MP3",
+        // Increase speech rate slightly for better conversational flow
+        speakingRate: 1.05
+      },
+    };
 
-    const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: text }] }],
-      generationConfig: {
-        responseModalities: ["AUDIO"],
-        speechConfig: {
-          voiceConfig: {
-            prebuiltVoiceConfig: {
-              voiceName: voice || "Puck" // Puck, Charon, Kore, Fenrir, Aoede
-            }
-          }
-        }
-      }
-    });
+    const [response] = await ttsClient.synthesizeSpeech(request);
+    const audioBuffer = response.audioContent;
 
-    const candidate = result.response.candidates?.[0];
-    const part = candidate?.content?.parts?.[0];
-
-    if (!part || !part.inlineData || !part.inlineData.data) {
-      console.error("[TTS API] Invalid Gemini response candidates:", JSON.stringify(result.response));
-      throw new Error("Gemini 모델이 오디오 데이터를 반환하지 않았습니다.");
+    if (!audioBuffer) {
+      throw new Error("GCP TTS API가 오디오 데이터를 반환하지 않았습니다.");
     }
 
-    const base64Data = part.inlineData.data;
-    const mimeType = part.inlineData.mimeType || "audio/l16; rate=24000; channels=1";
-    const rawAudioBuffer = Buffer.from(base64Data, "base64");
-
-    // If the mimeType is audio/l16, wrap it in a WAV container so standard HTML5 players can run it
-    let finalAudioBuffer = rawAudioBuffer;
-    let finalMimeType = "audio/wav";
-
-    if (mimeType.includes("audio/l16")) {
-      let sampleRate = 24000;
-      const rateMatch = mimeType.match(/rate=(\d+)/);
-      if (rateMatch) {
-        sampleRate = parseInt(rateMatch[1], 10);
-      }
-      
-      let channels = 1;
-      const channelsMatch = mimeType.match(/channels=(\d+)/);
-      if (channelsMatch) {
-        channels = parseInt(channelsMatch[1], 10);
-      }
-
-      const wavHeader = getWavHeader(rawAudioBuffer.length, sampleRate, channels, 16);
-      finalAudioBuffer = Buffer.concat([wavHeader, rawAudioBuffer]);
-    } else {
-      finalMimeType = mimeType;
-    }
-
-    return new Response(finalAudioBuffer, {
+    return new Response(audioBuffer, {
       status: 200,
       headers: {
-        "Content-Type": finalMimeType,
+        "Content-Type": "audio/mp3",
         "Cache-Control": "public, max-age=3600"
       }
     });
   } catch (error) {
-    console.error("[TTS API] Error generating audio:", error);
+    console.error("[GCP TTS] Error generating audio:", error);
     return new Response(
       JSON.stringify({ error: error.message || "음성 합성 중 오류가 발생했습니다." }),
       { status: 500, headers: { "Content-Type": "application/json" } }
