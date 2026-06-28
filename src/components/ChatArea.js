@@ -48,6 +48,14 @@ const LEVEL_NAMES = {
   advanced: "🔥 고급/원어민"
 };
 
+const GEMINI_AI_VOICES = [
+  { name: "ai_Aoede", label: "✨ Gemini AI: Aoede (따뜻한 여성)" },
+  { name: "ai_Kore", label: "✨ Gemini AI: Kore (차분한 여성)" },
+  { name: "ai_Puck", label: "✨ Gemini AI: Puck (경쾌한 남성)" },
+  { name: "ai_Charon", label: "✨ Gemini AI: Charon (차분한 남성)" },
+  { name: "ai_Fenrir", label: "✨ Gemini AI: Fenrir (신뢰감 있는 남성)" }
+];
+
 const PERSONA_EMOJIS = {
   interpreter: "💼",
   buddy: "⚡",
@@ -93,6 +101,23 @@ export default function ChatArea({
   });
 
   const [toggledTranslations, setToggledTranslations] = useState({});
+  const [autoPlayAudio, setAutoPlayAudio] = useState(false);
+  const audioRef = useRef(null);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("sueaaz_autoplay_audio") === "true";
+      setAutoPlayAudio(saved);
+    }
+  }, []);
+
+  const handleToggleAutoPlay = () => {
+    const newVal = !autoPlayAudio;
+    setAutoPlayAudio(newVal);
+    if (typeof window !== "undefined") {
+      localStorage.setItem("sueaaz_autoplay_audio", String(newVal));
+    }
+  };
 
   const handleToggleTranslation = (msgId) => {
     setToggledTranslations((prev) => ({
@@ -357,30 +382,11 @@ export default function ChatArea({
     
     // Load preference from localStorage
     const savedVoice = localStorage.getItem(`selected_voice_${targetLang}`);
-    if (savedVoice && matchingVoices.some(v => v.name === savedVoice)) {
+    if (savedVoice && (savedVoice.startsWith("ai_") || matchingVoices.some(v => v.name === savedVoice))) {
       setSelectedVoiceName(savedVoice);
     } else {
-      // Find the best voice automatically
-      const siriVoice = matchingVoices.find(v => v.name.toLowerCase().includes("siri"));
-      const googleVoice = matchingVoices.find(v => v.name.toLowerCase().includes("google"));
-      const premiumVoice = matchingVoices.find(v => v.name.toLowerCase().includes("premium") || v.name.toLowerCase().includes("enhanced"));
-      
-      // Additional natural voice names per language (e.g. Yuna, Otoya, Kyoko, Samantha)
-      let customFav = null;
-      if (langPrefix === "ko") {
-        customFav = matchingVoices.find(v => v.name.includes("Yuna") || v.name.includes("Suri") || v.name.includes("Siri"));
-      } else if (langPrefix === "ja") {
-        customFav = matchingVoices.find(v => v.name.includes("Otoya") || v.name.includes("Kyoko") || v.name.includes("Siri"));
-      } else if (langPrefix === "en") {
-        customFav = matchingVoices.find(v => v.name.includes("Samantha") || v.name.includes("Daniel") || v.name.includes("Siri"));
-      }
-      
-      const bestVoice = customFav || siriVoice || googleVoice || premiumVoice || matchingVoices[0];
-      if (bestVoice) {
-        setSelectedVoiceName(bestVoice.name);
-      } else {
-        setSelectedVoiceName("");
-      }
+      // Default to the premium Gemini AI voice for the best out-of-the-box experience
+      setSelectedVoiceName("ai_Aoede");
     }
   };
 
@@ -405,12 +411,36 @@ export default function ChatArea({
     }
   }, [room?.outputLang]);
 
-  // Speak single word using browser Text-to-Speech (TTS)
-  const handleSpeakWord = (word, langCode) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
+  const speakText = async (text, langCode, msgId = null, isWordOnly = false) => {
+    if (typeof window === "undefined") return;
 
-    if (window.speechSynthesis.speaking) {
+    // 1. Stop any currently active speech
+    if (window.speechSynthesis && window.speechSynthesis.speaking) {
       window.speechSynthesis.cancel();
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    // If clicking the same message that is already speaking, we toggle it off (Stop)
+    if (msgId && speakingMessageId === msgId) {
+      setSpeakingMessageId(null);
+      return;
+    }
+
+    // Clean up text (strip emojis)
+    let cleanedText = text;
+    if (!isWordOnly) {
+      const parsed = parseContent(text);
+      cleanedText = parsed.mainText;
+    }
+    if (!cleanedText) return;
+
+    try {
+      cleanedText = cleanedText.replace(/\p{Extended_Pictographic}/gu, "").replace(/[\u200d\ufe0f]/g, "").trim();
+    } catch (e) {
+      cleanedText = cleanedText.replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, "").trim();
     }
 
     const langMap = {
@@ -423,10 +453,67 @@ export default function ChatArea({
       "fr": "fr-FR",
       "de": "de-DE"
     };
-    
     const targetLang = langMap[langCode] || langCode || "en-US";
-    const utterance = new SpeechSynthesisUtterance(word);
-    
+
+    // 2. Identify if the current voice is a Gemini AI voice
+    const activeVoiceName = localStorage.getItem(`selected_voice_${targetLang}`) || selectedVoiceName || "ai_Aoede";
+    const isAiVoice = activeVoiceName.startsWith("ai_");
+
+    if (msgId) {
+      setSpeakingMessageId(msgId);
+    }
+
+    if (isAiVoice) {
+      try {
+        const geminiVoice = activeVoiceName.replace("ai_", ""); // e.g. "Aoede"
+        const response = await fetch("/api/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text: cleanedText, lang: langCode, voice: geminiVoice })
+        });
+
+        if (!response.ok) {
+          throw new Error("Failed to fetch audio from TTS API");
+        }
+
+        const blob = await response.blob();
+        const audioUrl = URL.createObjectURL(blob);
+        const audio = new Audio(audioUrl);
+        audioRef.current = audio;
+
+        audio.onended = () => {
+          if (msgId) setSpeakingMessageId(null);
+          URL.revokeObjectURL(audioUrl);
+          if (audioRef.current === audio) audioRef.current = null;
+        };
+
+        audio.onerror = () => {
+          if (msgId) setSpeakingMessageId(null);
+          URL.revokeObjectURL(audioUrl);
+          if (audioRef.current === audio) audioRef.current = null;
+          // Fallback to browser speechSynthesis
+          speakWithBrowserTts(cleanedText, targetLang, msgId);
+        };
+
+        await audio.play();
+      } catch (err) {
+        console.warn("[TTS] AI speech generation/playback failed. Falling back to browser TTS:", err);
+        speakWithBrowserTts(cleanedText, targetLang, msgId);
+      }
+    } else {
+      speakWithBrowserTts(cleanedText, targetLang, msgId);
+    }
+  };
+
+  const speakWithBrowserTts = (text, targetLang, msgId) => {
+    if (!window.speechSynthesis) {
+      if (msgId) setSpeakingMessageId(null);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = targetLang;
+
     const voices = window.speechSynthesis.getVoices();
     const savedVoiceName = localStorage.getItem(`selected_voice_${targetLang}`) || selectedVoiceName;
     let matchedVoice = voices.find(v => v.name === savedVoiceName);
@@ -439,7 +526,7 @@ export default function ChatArea({
       matchedVoice.lang.toLowerCase().replace("_", "-").startsWith(langPrefix) || 
       (iso3 && matchedVoice.lang.toLowerCase().replace("_", "-").startsWith(iso3))
     );
-    
+
     if (matchedVoice && isLanguageMatch) {
       utterance.lang = matchedVoice.lang.replace("_", "-");
       utterance.voice = matchedVoice;
@@ -470,8 +557,23 @@ export default function ChatArea({
         }
       }
     }
-    
+
+    utterance.onend = () => {
+      if (msgId) setSpeakingMessageId(null);
+    };
+    utterance.onerror = () => {
+      if (msgId) setSpeakingMessageId(null);
+    };
+
+    if (msgId) {
+      setSpeakingMessageId(msgId);
+    }
     window.speechSynthesis.speak(utterance);
+  };
+
+  // Speak single word using browser Text-to-Speech (TTS) or Gemini AI voice
+  const handleSpeakWord = (word, langCode) => {
+    speakText(word, langCode, null, true);
   };
 
   // Analyze sentence and generate vocabulary guide on demand for older messages
@@ -513,115 +615,9 @@ export default function ChatArea({
     }
   };
 
-  // Speak text using browser Text-to-Speech (TTS)
+  // Speak text using browser Text-to-Speech (TTS) or Gemini AI voice
   const handleSpeak = (text, langCode, msgId) => {
-    if (typeof window === "undefined" || !window.speechSynthesis) return;
-
-    if (window.speechSynthesis.speaking) {
-      window.speechSynthesis.cancel();
-      if (speakingMessageId === msgId) {
-        setSpeakingMessageId(null);
-        return;
-      }
-    }
-
-    const parsed = parseContent(text);
-    let textToSpeak = parsed.mainText;
-    if (!textToSpeak) return;
-
-    // Strip emojis so browser TTS doesn't read them literally (e.g. "웃는 얼굴", "번개")
-    try {
-      textToSpeak = textToSpeak.replace(/\p{Extended_Pictographic}/gu, "").replace(/[\u200d\ufe0f]/g, "").trim();
-    } catch (e) {
-      // Fallback regex range for emojis if unicode property escape is not supported
-      textToSpeak = textToSpeak.replace(/[\u2700-\u27BF]|[\uE000-\uF8FF]|\uD83C[\uDC00-\uDFFF]|\uD83D[\uDC00-\uDFFF]|[\u2011-\u26FF]|\uD83E[\uDC00-\uDFFF]/g, "").trim();
-    }
-
-    const utterance = new SpeechSynthesisUtterance(textToSpeak);
-    
-    // Map code to standard language codes (ko -> ko-KR, ja -> ja-JP, en -> en-US)
-    const langMap = {
-      "ko": "ko-KR",
-      "ja": "ja-JP",
-      "en": "en-US",
-      "es": "es-ES",
-      "vi": "vi-VN",
-      "zh": "zh-CN",
-      "fr": "fr-FR",
-      "de": "de-DE"
-    };
-    
-    const targetLang = langMap[langCode] || langCode || "en-US";
-    utterance.lang = targetLang;
-    
-    // Choose the highest quality native/premium voice for the selected language
-    if (typeof window !== "undefined" && window.speechSynthesis) {
-      const voices = window.speechSynthesis.getVoices();
-      
-      // Load user selected/cached voice if available
-      const savedVoiceName = localStorage.getItem(`selected_voice_${targetLang}`) || selectedVoiceName;
-      let matchedVoice = voices.find(v => v.name === savedVoiceName);
-      
-      const langPrefix = targetLang.split("-")[0].toLowerCase();
-      const ISO3_MAP = { ko: "kor", ja: "jpn", en: "eng", es: "spa", vi: "vie", zh: "chi", fr: "fra", de: "deu" };
-      const iso3 = ISO3_MAP[langPrefix] || "";
-      
-      // Ensure the matched voice language matches the target language prefix to prevent cross-language mis-assignment!
-      const isLanguageMatch = matchedVoice && (
-        matchedVoice.lang.toLowerCase().replace("_", "-").startsWith(langPrefix) || 
-        (iso3 && matchedVoice.lang.toLowerCase().replace("_", "-").startsWith(iso3))
-      );
-      
-      if (matchedVoice && isLanguageMatch) {
-        // Correct order: Set lang first, then voice to prevent Safari from resetting the voice!
-        utterance.lang = matchedVoice.lang.replace("_", "-");
-        utterance.voice = matchedVoice;
-        console.log(`[TTS] Speaking using saved voice: "${matchedVoice.name}" (Lang: ${utterance.lang})`);
-      } else {
-        // Filter voices that match the language prefix (supporting ISO 3-letter codes and underscore formats)
-        const matchingVoices = voices.filter(v => {
-          const vl = v.lang.toLowerCase().replace("_", "-");
-          return vl.startsWith(langPrefix) || (iso3 && vl.startsWith(iso3));
-        });
-        
-        if (matchingVoices.length > 0) {
-          // Prioritize natural neural/Siri/Google voices over older robotic legacy local voices
-          const siriVoice = matchingVoices.find(v => v.name.toLowerCase().includes("siri"));
-          const googleVoice = matchingVoices.find(v => v.name.toLowerCase().includes("google"));
-          const premiumVoice = matchingVoices.find(v => v.name.toLowerCase().includes("premium") || v.name.toLowerCase().includes("enhanced"));
-          
-          // Additional natural voice names per language (e.g. Yuna, Otoya, Kyoko, Samantha)
-          let customFav = null;
-          if (langPrefix === "ko") {
-            customFav = matchingVoices.find(v => v.name.includes("Yuna") || v.name.includes("Suri") || v.name.includes("Siri"));
-          } else if (langPrefix === "ja") {
-            customFav = matchingVoices.find(v => v.name.includes("Otoya") || v.name.includes("Kyoko") || v.name.includes("Siri"));
-          } else if (langPrefix === "en") {
-            customFav = matchingVoices.find(v => v.name.includes("Samantha") || v.name.includes("Daniel") || v.name.includes("Siri"));
-          }
-          
-          const bestVoice = customFav || siriVoice || googleVoice || premiumVoice || matchingVoices[0];
-          if (bestVoice) {
-            // Correct order: Set lang first, then voice to prevent Safari from resetting the voice!
-            utterance.lang = bestVoice.lang.replace("_", "-");
-            utterance.voice = bestVoice;
-            console.log(`[TTS] Speaking using default best voice: "${bestVoice.name}" (Lang: ${utterance.lang})`);
-          }
-        } else {
-          console.warn(`[TTS] No matching voices found for language prefix: "${langPrefix}". Using browser default.`);
-        }
-      }
-    }
-    
-    utterance.onend = () => {
-      setSpeakingMessageId(null);
-    };
-    utterance.onerror = () => {
-      setSpeakingMessageId(null);
-    };
-
-    setSpeakingMessageId(msgId);
-    window.speechSynthesis.speak(utterance);
+    speakText(text, langCode, msgId, false);
   };
 
   const handleSend = async (e) => {
@@ -754,12 +750,16 @@ export default function ChatArea({
 
       // 5. Stream finished. Save AI message to Firestore
       if (fullAIContent) {
-        await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
+        const docRef = await addDoc(collection(db, "rooms", activeRoomId, "messages"), {
           role: "model",
           content: fullAIContent,
           createdAt: serverTimestamp(),
           groundingMetadata: accumulatedMetadata || null
         });
+        
+        if (autoPlayAudio) {
+          speakText(fullAIContent, outputLangInfo.code, docRef.id, false);
+        }
       }
     } catch (err) {
       console.error("AI translation error:", err);
@@ -834,51 +834,79 @@ export default function ChatArea({
 
         {/* Header Actions */}
         <div className="flex items-center space-x-2 flex-shrink-0">
-          {room && availableVoices.length > 0 && (
-            <div className="flex items-center space-x-1.5 glass-panel px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-xs font-semibold bg-white/40 border border-primary/10 transition-all duration-300 hover:bg-white/60">
-              <Volume2 className="w-3.5 h-3.5 text-primary" />
-              <select
-                value={selectedVoiceName}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  setSelectedVoiceName(val);
-                  const langMap = {
-                    "ko": "ko-KR",
-                    "ja": "ja-JP",
-                    "en": "en-US",
-                    "es": "es-ES",
-                    "vi": "vi-VN",
-                    "zh": "zh-CN",
-                    "fr": "fr-FR",
-                    "de": "de-DE"
-                  };
-                  const targetLang = langMap[room.outputLang] || room.outputLang || "en-US";
-                  localStorage.setItem(`selected_voice_${targetLang}`, val);
-                }}
-                className="bg-transparent text-[9px] sm:text-[11px] font-medium text-on-surface/80 border-none outline-none focus:ring-0 cursor-pointer max-w-[60px] xs:max-w-[85px] sm:max-w-[120px] md:max-w-[140px] truncate"
-              >
-                {availableVoices.map((voice) => (
-                  <option key={voice.name} value={voice.name} className="text-on-surface bg-surface font-sans text-xs">
-                    {voice.name
-                      .replace(/Google/gi, "구글")
-                      .replace(/Microsoft/gi, "MS")
-                      .replace(/Siri/gi, "시리")
-                      .replace(/Apple/gi, "애플")
-                      .replace(/Natural/gi, "내추럴")
-                      .replace(/Neural/gi, "인공지능")
-                      .replace(/\([a-zA-Z]{2}-[a-zA-Z]{2}\)/g, "")
-                      .trim()}
-                  </option>
-                ))}
-              </select>
-              <button 
+          {room && (
+            <div className="flex items-center space-x-2">
+              {/* Auto-Play Toggle */}
+              <button
                 type="button"
-                onClick={() => setShowVoiceGuide(true)}
-                className="p-0.5 rounded-full text-on-surface/50 hover:text-primary hover:bg-white/40 transition-all cursor-pointer flex items-center justify-center ml-0.5"
-                title="음질 개선 가이드"
+                onClick={handleToggleAutoPlay}
+                className={`p-1.5 sm:p-2 rounded-full border transition-all duration-300 cursor-pointer flex items-center justify-center ${
+                  autoPlayAudio
+                    ? "bg-primary text-white border-primary/20 shadow-md shadow-primary/15 hover:bg-primary/95 active:scale-95"
+                    : "bg-white/40 border-primary/10 text-on-surface/50 hover:bg-white/60 hover:text-primary active:scale-95"
+                }`}
+                title={autoPlayAudio ? "음성 자동 재생 켜짐 (클릭 시 끔)" : "음성 자동 재생 꺼짐 (클릭 시 켬)"}
               >
-                <HelpCircle className="w-3.5 h-3.5" />
+                <Play className={`w-3.5 h-3.5 ${autoPlayAudio ? "fill-current" : ""}`} />
               </button>
+
+              {/* Voice select box */}
+              <div className="flex items-center space-x-1.5 glass-panel px-1.5 py-0.5 sm:px-2.5 sm:py-1 rounded-full text-xs font-semibold bg-white/40 border border-primary/10 transition-all duration-300 hover:bg-white/60">
+                <Volume2 className="w-3.5 h-3.5 text-primary" />
+                <select
+                  value={selectedVoiceName}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setSelectedVoiceName(val);
+                    const langMap = {
+                      "ko": "ko-KR",
+                      "ja": "ja-JP",
+                      "en": "en-US",
+                      "es": "es-ES",
+                      "vi": "vi-VN",
+                      "zh": "zh-CN",
+                      "fr": "fr-FR",
+                      "de": "de-DE"
+                    };
+                    const targetLang = langMap[room.outputLang] || room.outputLang || "en-US";
+                    localStorage.setItem(`selected_voice_${targetLang}`, val);
+                  }}
+                  className="bg-transparent text-[9px] sm:text-[11px] font-medium text-on-surface/80 border-none outline-none focus:ring-0 cursor-pointer max-w-[60px] xs:max-w-[85px] sm:max-w-[120px] md:max-w-[140px] truncate"
+                >
+                  <optgroup label="Premium Gemini AI Voices" className="text-[10px] font-bold text-primary bg-surface font-sans">
+                    {GEMINI_AI_VOICES.map((v) => (
+                      <option key={v.name} value={v.name} className="text-on-surface bg-surface font-sans text-xs font-normal">
+                        {v.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                  {availableVoices.length > 0 && (
+                    <optgroup label="System / Browser Voices" className="text-[10px] font-bold text-on-surface/60 bg-surface font-sans">
+                      {availableVoices.map((voice) => (
+                        <option key={voice.name} value={voice.name} className="text-on-surface bg-surface font-sans text-xs font-normal">
+                          {voice.name
+                            .replace(/Google/gi, "구글")
+                            .replace(/Microsoft/gi, "MS")
+                            .replace(/Siri/gi, "시리")
+                            .replace(/Apple/gi, "애플")
+                            .replace(/Natural/gi, "내추럴")
+                            .replace(/Neural/gi, "인공지능")
+                            .replace(/\([a-zA-Z]{2}-[a-zA-Z]{2}\)/g, "")
+                            .trim()}
+                        </option>
+                      ))}
+                    </optgroup>
+                  )}
+                </select>
+                <button 
+                  type="button"
+                  onClick={() => setShowVoiceGuide(true)}
+                  className="p-0.5 rounded-full text-on-surface/50 hover:text-primary hover:bg-white/40 transition-all cursor-pointer flex items-center justify-center ml-0.5"
+                  title="음질 개선 가이드"
+                >
+                  <HelpCircle className="w-3.5 h-3.5" />
+                </button>
+              </div>
             </div>
           )}
           {room && (
