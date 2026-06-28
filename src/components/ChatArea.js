@@ -1742,6 +1742,7 @@ export default function ChatArea({
                 onChange={(e) => setUserInput(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
+                    if (e.nativeEvent.isComposing) return;
                     e.preventDefault();
                     handleSend(e);
                   }
