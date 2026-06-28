@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { LANGUAGES } from "@/lib/languages";
-import { Plus, MessageSquare, LogOut, Globe, Sparkles, ChevronRight, Settings, BookOpen, Share2 } from "lucide-react";
+import { Plus, MessageSquare, LogOut, Globe, Sparkles, ChevronRight, Settings, BookOpen, Share2, Trash2 } from "lucide-react";
 import { auth, db } from "@/lib/firebase";
-import { collection, addDoc, serverTimestamp, query, where, orderBy } from "firebase/firestore";
+import { collection, addDoc, serverTimestamp, query, where, orderBy, doc, deleteDoc } from "firebase/firestore";
 
 const PERSONAS = [
   { code: "interpreter", name: "💼 전문 통역사", desc: "정중하고 비즈니스 매너가 돋보이는 격식 있는 어조" },
@@ -102,6 +102,30 @@ export default function Sidebar({
       console.error("Error creating room:", error);
     } finally {
       setIsCreatingRoom(false);
+    }
+  };
+
+  const handleDeleteRoom = async (roomId, e) => {
+    e.stopPropagation();
+    
+    if (typeof window !== "undefined") {
+      const confirmDelete = window.confirm("정말로 이 채팅방을 삭제하시겠습니까?\n대화 내용이 모두 영구적으로 삭제됩니다.");
+      if (!confirmDelete) return;
+    }
+
+    try {
+      if (activeRoomId === roomId) {
+        const remainingRooms = rooms.filter((r) => r.id !== roomId);
+        if (remainingRooms.length > 0) {
+          setActiveRoomId(remainingRooms[0].id);
+        } else {
+          setActiveRoomId(null);
+        }
+      }
+      await deleteDoc(doc(db, "rooms", roomId));
+    } catch (error) {
+      console.error("Error deleting room:", error);
+      alert("채팅방을 삭제하는 중 오류가 발생했습니다.");
     }
   };
 
@@ -303,21 +327,32 @@ export default function Sidebar({
           rooms.map((room) => {
             const isActive = activeRoomId === room.id;
             return (
-              <button
+              <div
                 key={room.id}
-                onClick={() => setActiveRoomId(room.id)}
-                className={`flex items-center space-x-3 px-3 py-3 w-full rounded-xl transition-all duration-300 text-left font-body group hover:translate-x-1 ${
+                className={`relative flex items-center w-full rounded-xl group transition-all duration-300 ${
                   isActive
                     ? "bg-primary/10 text-primary border border-primary/15 shadow-[0_4px_12px_rgba(124,58,237,0.05)]"
-                    : "text-on-surface/65 hover:bg-primary/5 hover:text-primary"
+                    : "text-on-surface/65 hover:bg-primary/5 hover:text-primary border border-transparent"
                 }`}
               >
-                <MessageSquare className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-primary" : "text-on-surface/40 group-hover:text-primary/70"}`} />
-                <span className="font-medium text-sm truncate flex-1">{room.title}</span>
-                {isActive && (
-                  <span className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_5px_rgba(24,24,27,0.4)]"></span>
-                )}
-              </button>
+                <button
+                  onClick={() => setActiveRoomId(room.id)}
+                  className="flex items-center space-x-3 px-3 py-3 w-full text-left font-body cursor-pointer pr-10 min-w-0"
+                >
+                  <MessageSquare className={`w-4 h-4 flex-shrink-0 ${isActive ? "text-primary" : "text-on-surface/40 group-hover:text-primary/70"}`} />
+                  <span className="font-medium text-sm truncate flex-1">{room.title}</span>
+                  {isActive && (
+                    <span className="w-1.5 h-1.5 rounded-full bg-primary shadow-[0_0_5px_rgba(24,24,27,0.4)] flex-shrink-0"></span>
+                  )}
+                </button>
+                <button
+                  onClick={(e) => handleDeleteRoom(room.id, e)}
+                  className="absolute right-2 p-1.5 rounded-lg text-on-surface/30 hover:text-red-500 hover:bg-red-500/10 opacity-60 md:opacity-0 group-hover:opacity-100 transition-all cursor-pointer flex items-center justify-center"
+                  title="대화방 삭제"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </button>
+              </div>
             );
           })
         )}
