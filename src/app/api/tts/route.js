@@ -16,7 +16,7 @@ const VOICE_MAPPING = {
   },
   "ja-JP": {
     "gcp_female_1": "ja-JP-Neural2-B",
-    "gcp_female_2": "ja-JP-Wavenet-a",
+    "gcp_female_2": "ja-JP-Wavenet-A",
     "gcp_male_1": "ja-JP-Neural2-C",
     "gcp_male_2": "ja-JP-Wavenet-D"
   },

@@ -454,9 +454,9 @@ export default function ChatArea({
     };
     const targetLang = langMap[langCode] || langCode || "en-US";
 
-    // 2. Identify if the current voice is a Gemini AI voice
-    const activeVoiceName = localStorage.getItem(`selected_voice_${targetLang}`) || selectedVoiceName || "ai_Aoede";
-    const isAiVoice = activeVoiceName.startsWith("ai_");
+    // 2. Identify if the current voice is a Premium GCP AI or Gemini voice
+    const activeVoiceName = localStorage.getItem(`selected_voice_${targetLang}`) || selectedVoiceName || "gcp_female_1";
+    const isAiVoice = activeVoiceName.startsWith("ai_") || activeVoiceName.startsWith("gcp_");
 
     if (msgId) {
       setSpeakingMessageId(msgId);
@@ -464,11 +464,10 @@ export default function ChatArea({
 
     if (isAiVoice) {
       try {
-        const geminiVoice = activeVoiceName.replace("ai_", ""); // e.g. "Aoede"
         const response = await fetch("/api/tts", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ text: cleanedText, lang: langCode, voice: geminiVoice })
+          body: JSON.stringify({ text: cleanedText, lang: targetLang, voice: activeVoiceName })
         });
 
         if (!response.ok) {
