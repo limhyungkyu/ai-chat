@@ -1,5 +1,27 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 
+function getWavHeader(dataLength, sampleRate = 24000, numChannels = 1, bitsPerSample = 16) {
+  const byteRate = (sampleRate * numChannels * bitsPerSample) / 8;
+  const blockAlign = (numChannels * bitsPerSample) / 8;
+  const buffer = Buffer.alloc(44);
+
+  buffer.write("RIFF", 0);
+  buffer.writeUInt32LE(dataLength + 36, 4);
+  buffer.write("WAVE", 8);
+  buffer.write("fmt ", 12);
+  buffer.writeUInt32LE(16, 16);
+  buffer.writeUInt16LE(1, 20); // Raw PCM
+  buffer.writeUInt16LE(numChannels, 22);
+  buffer.writeUInt32LE(sampleRate, 24);
+  buffer.writeUInt32LE(byteRate, 28);
+  buffer.writeUInt16LE(blockAlign, 32);
+  buffer.writeUInt16LE(bitsPerSample, 34);
+  buffer.write("data", 36);
+  buffer.writeUInt32LE(dataLength, 40);
+
+  return buffer;
+}
+
 export async function POST(req) {
   try {
     const { text, lang, voice } = await req.json();
@@ -22,9 +44,9 @@ export async function POST(req) {
     // Initialize the Gemini API client
     const genAI = new GoogleGenerativeAI(apiKey);
     
-    // Choose gemini-2.5-flash as the multimodal audio generation model
+    // Choose gemini-3.1-flash-tts-preview as the dedicated text-to-speech model
     const model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash"
+      model: "gemini-3.1-flash-tts-preview"
     });
 
     console.log(`[TTS API] Generating audio for text: "${text.substring(0, 30)}..." using voice: ${voice || "Puck"}`);
@@ -52,13 +74,36 @@ export async function POST(req) {
     }
 
     const base64Data = part.inlineData.data;
-    const mimeType = part.inlineData.mimeType || "audio/wav";
-    const audioBuffer = Buffer.from(base64Data, "base64");
+    const mimeType = part.inlineData.mimeType || "audio/l16; rate=24000; channels=1";
+    const rawAudioBuffer = Buffer.from(base64Data, "base64");
 
-    return new Response(audioBuffer, {
+    // If the mimeType is audio/l16, wrap it in a WAV container so standard HTML5 players can run it
+    let finalAudioBuffer = rawAudioBuffer;
+    let finalMimeType = "audio/wav";
+
+    if (mimeType.includes("audio/l16")) {
+      let sampleRate = 24000;
+      const rateMatch = mimeType.match(/rate=(\d+)/);
+      if (rateMatch) {
+        sampleRate = parseInt(rateMatch[1], 10);
+      }
+      
+      let channels = 1;
+      const channelsMatch = mimeType.match(/channels=(\d+)/);
+      if (channelsMatch) {
+        channels = parseInt(channelsMatch[1], 10);
+      }
+
+      const wavHeader = getWavHeader(rawAudioBuffer.length, sampleRate, channels, 16);
+      finalAudioBuffer = Buffer.concat([wavHeader, rawAudioBuffer]);
+    } else {
+      finalMimeType = mimeType;
+    }
+
+    return new Response(finalAudioBuffer, {
       status: 200,
       headers: {
-        "Content-Type": mimeType,
+        "Content-Type": finalMimeType,
         "Cache-Control": "public, max-age=3600"
       }
     });
